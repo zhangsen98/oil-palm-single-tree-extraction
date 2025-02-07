@@ -1,0 +1,59 @@
+# Define window size and a constant parameter for processing
+win_size = 'A'  # Window size (adjustable parameter)
+C = 'B'  # Constant threshold for comparison (adjustable parameter)
+
+
+def sliding(array: np.ndarray, win_size=('win_size', 'win_size')):
+    """
+    Apply sliding window operation on the array.
+    """
+    h, w = array.shape
+    if isinstance(win_size, int):
+        win_size = (win_size, win_size)
+    if h % win_size[0] or w % win_size[1]:
+        h, w = h // win_size[0], w // win_size[1]
+        array = np.copy(array[:h * win_size[0], :w * win_size[1]])
+    else:
+        h, w = h // win_size[0], w // win_size[1]
+    shape = (h, w, win_size[0], win_size[1])
+    strides = np.array([w * win_size[0] * win_size[1], win_size[1], w * win_size[1], 1])
+    strides = array.itemsize * strides
+    array = np.lib.stride_tricks.as_strided(array, shape=shape, strides=strides)
+    array = array.reshape(h * w, win_size[0] * win_size[1])
+    array = np.sum(array, axis=1)
+    return array.reshape(h, w)
+
+
+def raster_info(path):
+    """
+    Retrieve metadata information from the raster.
+    """
+    ri = {}
+    src = rio.open(path)
+    ri['crs'] = src.crs
+    ri['transform'] = src.transform
+    ri['height'] = src.height
+    ri['width'] = src.width
+    ri['nodata'] = src.nodata
+    return ri
+
+
+ri = raster_info(path)
+win = ((-5, ri['height'] + 5), (-5, ri['width'] + 5))
+array = raster_to_array2(L_path, band=1, window=win)
+count = np.zeros(shape=(ri['height'] + 10, ri['width'] + 10))
+
+# Compute count of values greater than threshold C
+a = array[10:, ...] - array[:-10, ...]
+count[10:, ...] += np.int0(a > C)
+a = -a
+count[:-10, ...] += np.int0(a > C)
+a = array[..., 10:] - array[..., :-10]
+count[..., 10:] += np.int0(a > C)
+a = -a
+count[..., :-10] += np.int0(a > C)
+
+# Apply sliding window and save processed result
+count = sliding(count, win_size=win_size)
+t = ri['transform']
+t = t.from_gdal(t.c, t.a * win_size, t.b, t.f, t.d, t.e * win_size)
