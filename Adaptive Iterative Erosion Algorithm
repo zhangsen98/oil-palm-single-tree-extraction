@@ -1,0 +1,52 @@
+# Area is in square meters
+max_area = Y
+min_area = Z
+# Set the minimum area, areas smaller than this will be removed during the first iteration
+max_area2 = A1
+# Pixel value for trees in raster
+raster_tree_num = B1
+# Number of iterations
+iteration_num = C1
+
+gdfs = []
+# Raster to vector conversion
+gdf = array_to_gdf(image, raster_tree_num, crs, transform)
+gdf["area"] = gdf.area.to_numpy() * 1.0e10
+# Remove vectors with area less than the set minimum area
+gdf = gdf.loc[gdf['area'] > max_area2]
+if not gdf.size:
+    print(f'All vector areas are smaller than {max_area2}')
+    sys.exit()
+
+# Extract based on area
+gdfs.append(gdf.loc[(gdf["area"] <= max_area) & (gdf["area"] >= min_area)])
+gdf = gdf.loc[(gdf["area"] > max_area) | (gdf["area"] < min_area)]
+if not gdf.size:
+    print(f"All vector areas are within the range of {min_area} and {max_area}")
+
+# Vector to raster conversion
+image = gdf_to_array(gdf, image, transform, raster_tree_num)
+
+for i in range(iteration_num):
+    print(f"Iteration {i + 1}")
+    # Erosion
+    kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (B2, B2))
+    image = cv2.erode(image, kernel)
+    mask = image == raster_tree_num
+    if not np.any(mask):
+        break
+    # Raster to vector conversion
+    gdf = array_to_gdf(image, raster_tree_num, crs, transform)
+
+    if not gdf.size:
+        break
+    gdf["area"] = gdf.area.to_numpy() * 1.0e10
+
+    # Extract based on area
+    gdfs.append(gdf.loc[(gdf["area"] <= max_area) & (gdf["area"] >= min_area)])
+    gdf = gdf.loc[(gdf["area"] > max_area) | (gdf["area"] < min_area)]
+    if not gdf.size:
+        break
+
+    # Vector to raster conversion
+    image = gdf_to_array(gdf, image, transform, raster_tree_num)
